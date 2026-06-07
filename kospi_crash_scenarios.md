@@ -170,3 +170,24 @@
 - [반도체주 '브로드컴 쇼크' 검은 금요일 (머니투데이)](https://www.mt.co.kr/stock/2026/06/05/2026060510333294559)
 - [레버리지 ETF 쏠림·변동성 증폭 (MBC)](https://imnews.imbc.com/replay/2026/nwdesk/article/6825711_37004.html)
 - [SK하이닉스 차트/전망 (Alphasquare)](https://alphasquare.co.kr/home/stock-summary?code=000660)
+
+## 7. 시가 × 종가 셀별 대응 매트릭스
+
+전 셀 NAV < -3% → **Cut 항상 발동.** 셀별 변수: ①재진입 vs 현금(경로) ②삼성전기 추가 트림(종가 깊이) ③KORU 평단청산 vs 손절(시가).
+
+**공통 베이스라인(16셀):** 하이닉스 1/2 트림 · 현대모비스 사수 · NAVER 절반축소 · 한화오션 반등정리
+
+| 시가↓ \ 종가→ | -6% (NAV -3.0%) | -8% (NAV -4.1%) | -10% (NAV -5.1%) | -12% (NAV -6.1%) |
+|---|---|---|---|---|
+| **-6%** | 횡보 / CASH / KORU BE | 약화 / CASH / KORU BE | 계단↓ +SEM½ / CASH / 사이드카 | 급락↓ +SEM½ / CASH / KORU BE→SL / CB1 |
+| **-8%** | 회복V / RE1 / KORU BE | 횡보 / CASH / CB1 | 약화 +SEM½ / CASH / CB1 | 계단↓ +SEM½ / CASH / KORU SL / CB1→2 |
+| **-10%** | 강한V / RE1~2 / KORU BE | 회복V / RE1 / KORU BE | 횡보 +SEM½ / CASH / CB1 | 약화 +SEM½ / CASH / KORU SL / CB2 |
+| **-12%** | 폭반전V / RE2 / KORU BE | 강한V / RE1~2 / KORU BE/SL | 회복V / RE1 / KORU SL | 최악횡보 +SEM½ / CASH / KORU SL / CB2 |
+
+**범례:** SEM½=삼성전기 절반 트림 · KORU BE=평단청산/SL=손절 · RE1·RE2=재진입 트랜치 · CASH=현금보유 · CB=서킷브레이커
+
+**읽기:** ①대각선(시가=종가)=횡보→표준 Cut+현금, 종가 깊으면 SEM½. ②좌하단(깊은 시가→회복)=V형→재진입(깊을수록 RE2). ③우상단(얕은 시가→악화)=계단식→풀 디펜스, KORU 손절.
+
+- **KORU 키 = 시가**: -6~-10 선반영내→BE, -12 초과→SL (아침 미장 오버나잇서 처리)
+- **재진입/현금 키 = 경로**: 종가>시가(회복)→RE, 종가≤시가→CASH
+- NAV는 β1.3·KORU 평단청산 기준. 메모리 스파이럴 β1.5면 ×1.15, KORU 손절 시 셀당 -0.6~1.1%p 추가.
