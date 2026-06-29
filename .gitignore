@@ -2,3 +2,6 @@ __pycache__/
 *.pyc
 qa_out/
 *.bak
+
+_백업_*.pptx
+sdi_assets/*.png
