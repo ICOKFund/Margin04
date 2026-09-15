@@ -8,22 +8,11 @@
 (종목코드, 종목명, 종가, 대비, 등락률, 상장시가총액). 인코딩은 UTF-8/CP949 자동 판별.
 """
 import csv, io, sys
-from sector_map import build, MEGA
+from sector_map import build, MEGA, MANDATE, TEAM_NAME, BANK, split_sectors
 
 CSV = sys.argv[1] if len(sys.argv) > 1 else 'krx300_constituents_20260915.csv'
 NAV = float(sys.argv[2]) if len(sys.argv) > 2 else 28_000_000
 
-MANDATE = {
-    '반도체·소부장': 1, 'IT하드웨어·부품': 1, '소프트웨어·인터넷·게임': 1,
-    '지주(반도체 프록시)': 1, '2차전지·소재': 1, '자동차·부품': 1,
-    '조선·기자재': 2, '방산·우주': 2, '전력기기·유틸리티': 2,
-    '기계·건설·로봇': 2, '소재·화학·철강': 2, '에너지·상사·운송': 2,
-    '헬스케어·바이오': 3, '소비재·유통': 3,
-}
-# 팀 3은 금융을 은행·지주 / 보험·증권으로 쪼개고 통신+미디어를 묶는다 (09 §6)
-BANK = set('KB금융 신한지주 하나금융지주 우리금융지주 기업은행 BNK금융지주 '
-           'JB금융지주 iM금융지주 카카오뱅크'.split())
-TEAM = {1: '테크·전동화', 2: '중후장대·인프라', 3: '내수·디펜시브'}
 HARD_CAP = 8.0      # 진입틸트 8%p 초과 = 매수 불가
 TEAM_BUDGET = 6.0   # 팀 액티브 예산 ±6%p
 
@@ -53,14 +42,7 @@ def main():
     if unmapped:
         print(f'!! 섹터 미분류 {len(unmapped)}종목: {unmapped}\n')
 
-    # 팀 3 금융 분할 · 통신+미디어 병합
-    for s in stocks:
-        if s['sec'] == '금융':
-            s['sec'] = '금융 — 은행·지주' if s['name'] in BANK else '금융 — 보험·증권'
-        elif s['sec'] in ('통신', '미디어·엔터·레저'):
-            s['sec'] = '통신·미디어·엔터'
-    for k in ('금융 — 은행·지주', '금융 — 보험·증권', '통신·미디어·엔터'):
-        MANDATE[k] = 3
+    md = split_sectors(stocks)
 
     mega = [s for s in stocks if s['sec'] == '__MEGA__']
     mega_w = sum(s['w'] for s in mega)
@@ -92,10 +74,10 @@ def main():
 
     print(f'\n{"="*92}\n[팀별 담당 산업]  팀 예산 = 담당 산업 BM비중 합 × NAV')
     for t in (1, 2, 3):
-        ss = sorted([k for k, v in MANDATE.items() if v == t],
+        ss = sorted([k for k, v in md.items() if v == t],
                     key=lambda k: -sum(x['w'] for x in secs[k]))
         bw = sum(sum(x['w'] for x in secs[k]) for k in ss)
-        print(f'\n■ 팀 {t} · {TEAM[t]}   {bw:.2f}%   {bw/100*NAV:,.0f}원')
+        print(f'\n■ 팀 {t} · {TEAM_NAME[t]}   {bw:.2f}%   {bw/100*NAV:,.0f}원')
         print(f'  {"담당 산업":<20s}{"BM비중":>7s}{"배정액":>12s}{"종목":>5s}'
               f'{"매수불가":>7s}{"최저가":>10s}  대표 종목')
         for k in ss:
@@ -121,7 +103,7 @@ def main():
         entry = abs((int(s['w']/one)+1)*one - s['w'])
         if entry > HARD_CAP:
             found = True
-            print(f'  {s["name"]:<16s}{MANDATE.get(s["sec"],"?"):>3}{s["px"]:>11,.0f}원'
+            print(f'  {s["name"]:<16s}{md.get(s["sec"],"?"):>3}{s["px"]:>11,.0f}원'
                   f'{s["w"]:>7.2f}%{one:>8.2f}%{entry:>+9.2f}%p')
     if not found:
         print('  없음')

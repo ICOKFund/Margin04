@@ -9,33 +9,26 @@ from docx.shared import Pt, Cm, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.enum.section import WD_SECTION
 from docx.oxml.ns import qn
-from sector_map import build, MEGA
-from weights import load, BANK
+from sector_map import build, MEGA, MANDATE, split_sectors
+from weights import load
 
 CSV = sys.argv[1] if len(sys.argv) > 1 else 'krx300_constituents_20260915.csv'
 NAV = float(sys.argv[2]) if len(sys.argv) > 2 else 28_000_000
 OUT = sys.argv[3] if len(sys.argv) > 3 else 'ICOK_담당산업_배정시트.docx'
 ASOF = '2026-09-15'
 
-MANDATE = {
-    '반도체·소부장': 1, 'IT하드웨어·부품': 1, '소프트웨어·인터넷·게임': 1,
-    '지주(반도체 프록시)': 1, '2차전지·소재': 1, '자동차·부품': 1,
-    '조선·기자재': 2, '방산·우주': 2, '전력기기·유틸리티': 2,
-    '기계·건설·로봇': 2, '소재·화학·철강': 2, '에너지·상사·운송': 2,
-    '헬스케어·바이오': 3, '소비재·유통': 3,
-    '금융 — 은행·지주': 3, '금융 — 보험·증권': 3, '통신·미디어·엔터': 3,
-}
 TEAM = {
     1: ('테크·전동화', '배준서', 6, '반도체가 잘 팔릴 때 · 환율이 오를 때'),
     2: ('중후장대·인프라', '이재우', 5, '공장·발전소 짓는 돈이 늘어날 때'),
     3: ('내수·디펜시브', '조찬형', 5, '금리가 내리고 국내 경기가 살아날 때'),
 }
 NOTE = {
-    1: '지주(SK스퀘어)는 종목이 1개이고 SK하이닉스 룩스루 1.8배라 팀장이 직접 관리합니다. '
-       '6번째 인원은 반도체·소부장을 전공정(장비·소재) / 후공정(기판·테스트)으로 나눠 맡습니다.',
-    2: '담당 산업 6개, 인원 5명입니다. 가장 작은 소재·화학·철강은 팀장이 겸임합니다.',
-    3: '금융이 팀 몫의 절반(7.89%)이라 은행·지주 / 보험·증권으로 나눴습니다. '
-       '보험(IFRS17 CSM)과 무매출 바이오는 팀장이 봅니다.',
+    1: '담당 산업 6개, 인원 6명으로 1인 1산업이다. 순수지주는 「지주」로 따로 묶었다 — '
+       'SK스퀘어는 SK하이닉스 룩스루 배수가 1.8배이므로 편입 시 펀드 전체 노출을 함께 계산한다.',
+    2: '담당 산업 6개, 인원 5명이므로 팀장이 1개를 겸임한다. 지주 분리로 작아진 '
+       '소재·화학·철강과 에너지·상사·운송을 「소재·에너지」로 합쳤다.',
+    3: '담당 산업 6개, 인원 5명이므로 팀장이 1개를 겸임한다. 금융이 팀 몫의 절반이라 '
+       '은행·지주 / 보험·증권으로 나눴다. 보험(IFRS17 CSM)과 매출 미발생 바이오는 팀장이 본다.',
 }
 FONT = '맑은 고딕'
 
@@ -73,16 +66,16 @@ def main():
     rows = load(CSV)
     total = sum(float(r[5]) for r in rows)
     smap = build()
-    S = {}
+    flat = []
     for code, name, close, _, _, mcap in rows:
         if name in MEGA:
             continue
-        sec = smap[name]
-        if sec == '금융':
-            sec = '금융 — 은행·지주' if name in BANK else '금융 — 보험·증권'
-        elif sec in ('통신', '미디어·엔터·레저'):
-            sec = '통신·미디어·엔터'
-        S.setdefault(sec, []).append((name, float(close), float(mcap) / total * 100))
+        flat.append(dict(name=name, px=float(close), sec=smap[name],
+                         w=float(mcap) / total * 100))
+    md = split_sectors(flat)
+    S = {}
+    for x in flat:
+        S.setdefault(x['sec'], []).append((x['name'], x['px'], x['w']))
 
     doc = Document()
     s = doc.sections[0]
@@ -101,7 +94,7 @@ def main():
             s2.left_margin = s2.right_margin = Cm(1.5)
 
         name, lead, n, when = TEAM[t]
-        secs = sorted([k for k, v in MANDATE.items() if v == t],
+        secs = sorted([k for k, v in md.items() if v == t],
                       key=lambda k: -sum(x[2] for x in S[k]))
         bw = sum(sum(x[2] for x in S[k]) for k in secs)
 
@@ -146,19 +139,20 @@ def main():
         para(doc, '이 팀의 배정 원칙', 10, True, after=2)
         para(doc, NOTE[t], 9, after=6)
 
-        para(doc, '다음 주 과제 — 담당 산업 스크리닝 (A4 1~2장, 세션 전날 자정)', 10, True, after=2)
+        para(doc, '과제 — 담당 산업 스크리닝  (A4 1~2장 · 마감 9월 22일 세션 전날 자정)', 10, True, after=2)
         for line in (
-            '1.  담당 산업 전 종목을 3개 지표로 줄 세운다 — 3개년 매출 CAGR · 최근 4분기 평균 OPM · ROE',
-            '     모든 숫자에 출처와 기준일을 단다. DART 사업보고서를 1순위로 쓴다.',
-            '2.  상위 3종목을 고르고 각각 두 줄로 근거를 쓴다.',
-            '3.  탈락 5종목과 뺀 이유를 한 줄씩 쓴다.  "지표가 나빠서"는 사유가 아니다.',
-            '4.  1주 가격을 확인한다 — 1주가 팀 예산의 20%를 넘는 종목을 표시한다.',
+            '1.  담당 산업 전 종목을 매출 CAGR(3년) · 영업이익률 · ROE 세 지표로 줄 세운다.',
+            '     모든 수치에 출처와 기준일을 기재한다. 1순위 자료는 DART 사업보고서다.',
+            '2.  상위 3종목을 선정하고 각각 두 줄로 근거를 기재한다.',
+            '3.  탈락 5종목과 사유를 한 줄씩 기재한다. 해당 지표와 수치를 명시한다.',
+            '4.  1주 가격이 팀 예산의 20%를 초과하는 종목을 표시한다.',
+            '5.  지주를 검토할 때는 같은 팀이 보유한 자회사와의 합산 노출을 함께 확인한다.',
         ):
             para(doc, line, 9, after=1)
-        para(doc, '금지 — 증권사 리포트를 논지의 근거로 쓰지 않는다. 목표주가를 인용하지 않는다.',
+        para(doc, '증권사 리포트를 논지의 근거로 사용하지 않는다. 목표주가를 인용하지 않는다.',
              9, True, after=2)
-        para(doc, f'여기서 고른 3종목 중 하나를 10월 13일에 발제한다. '
-                  f'효성중공업(2,689,000원 · BM 0.47%)은 1주만 사도 한도를 넘어 매수할 수 없다.',
+        para(doc, '스크리닝 결과로 팀 미니 IC에서 1라운드 발표 섹터를 정한다.  '
+                  '효성중공업(2,689,000원 · 지수 비중 0.47%)은 1주 매수만으로 한도를 초과한다.',
              9, color=(0x99, 0x00, 0x11), after=0)
 
     doc.save(OUT)

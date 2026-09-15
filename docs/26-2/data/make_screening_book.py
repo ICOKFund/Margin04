@@ -11,8 +11,8 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.worksheet.datavalidation import DataValidation
 from openpyxl.utils import get_column_letter
-from sector_map import build, MEGA
-from weights import load, BANK
+from sector_map import build, MEGA, MANDATE, TEAM_NAME, split_sectors
+from weights import load
 
 CSV = sys.argv[1] if len(sys.argv) > 1 else 'krx300_constituents_20260915.csv'
 NAV = float(sys.argv[2]) if len(sys.argv) > 2 else 28_000_000
@@ -20,19 +20,13 @@ OUT = sys.argv[3] if len(sys.argv) > 3 else 'ICOK_담당산업_스크리닝.xlsx
 ASOF = '2026-09-15'
 HARD_CAP, BUDGET_CAP = 8.0, 6.0
 
-MANDATE = {
-    '자동차·부품': 1, '2차전지·소재': 1, 'IT하드웨어·부품': 1,
-    '지주(반도체 프록시)': 1, '반도체·소부장': 1, '소프트웨어·인터넷·게임': 1,
-    '전력기기·유틸리티': 2, '조선·기자재': 2, '에너지·상사·운송': 2,
-    '기계·건설·로봇': 2, '방산·우주': 2, '소재·화학·철강': 2,
-    '금융 — 은행·지주': 3, '헬스케어·바이오': 3, '금융 — 보험·증권': 3,
-    '소비재·유통': 3, '통신·미디어·엔터': 3,
-}
-TEAM = {1: '테크·전동화', 2: '중후장대·인프라', 3: '내수·디펜시브'}
 NOTE = {
-    '반도체·소부장': '41종목. 전공정(장비·소재) / 후공정(기판·테스트·패키징)으로 분할하여 2인이 분담할 것을 권장한다.',
-    '지주(반도체 프록시)': 'SK스퀘어 1종목. SK하이닉스 지분 룩스루 배수 1.8배. 팀장이 관리한다.',
-    '헬스케어·바이오': '44종목 중 다수가 매출 미발생 임상 단계 기업이다. 매출·영업이익률·PER 산출이 불가능한 기업은 하위 테마에 「파이프라인」으로 표기한다.',
+    '반도체·소부장': '38종목. 전공정(장비·소재) / 후공정(기판·테스트·패키징)으로 분할하여 2인이 분담할 것을 권장한다.',
+    '지주 — 테크·전동화': '순수지주만 모았다. 주가 동인은 NAV 할인율·지배구조·주주환원이며 사업회사와 분석 틀이 다르다. SK스퀘어는 SK하이닉스 지분 룩스루 배수가 1.8배이므로 편입 시 펀드 전체의 SK하이닉스 노출을 함께 계산한다.',
+    '지주 — 산업재·인프라': '순수지주만 모았다. 자회사와 중복 노출을 확인한다. 두산 ↔ 두산에너빌리티, LS ↔ LS ELECTRIC, HD현대 ↔ HD현대중공업·HD현대일렉트릭, 한화 ↔ 한화에어로스페이스.',
+    '지주 — 내수·소비': '순수지주만 모았다. 자회사와 중복 노출을 확인한다. LG ↔ LG전자·LG화학·LG에너지솔루션, CJ ↔ CJ제일제당·CJ대한통운, 한미사이언스 ↔ 한미약품.',
+    '소재·에너지': '27종목. 철강·화학·비철금속과 정유·상사·해운을 함께 본다. 공통 동인은 원자재 가격과 스프레드다.',
+    '헬스케어·바이오': '42종목 중 다수가 매출 미발생 임상 단계 기업이다. 매출·영업이익률·PER 산출이 불가능한 기업은 하위 테마에 「파이프라인」으로 표기한다.',
     '금융 — 은행·지주': '매출·영업이익률 대신 NIM·대손비용률·CET1·주주환원율을 사용한다. 밸류에이션은 PBR-ROE 기준.',
     '금융 — 보험·증권': '보험은 IFRS17 기준 CSM을 확인한다.',
 }
@@ -116,7 +110,7 @@ def build_sheet(wb, sec, team, stocks, budget):
     c.font = SUB
     rule(ws, 3)
 
-    nx = field(ws, 4, 1, '팀', f'팀 {team} · {TEAM[team]}', 1, 2)
+    nx = field(ws, 4, 1, '팀', f'팀 {team} · {TEAM_NAME[team]}', 1, 2)
     nx = field(ws, 4, nx, '담당자', None, 1, 2)
     field(ws, 4, nx, '제출일', None, 1, 2)
     nx = field(ws, 5, 1, '지수 비중', f'{w:.2f}%', 1, 2)
@@ -226,6 +220,12 @@ def guide_sheet(wb):
             '가능 = 팀 재량  /  IC 2/3 = 펀드 IC 특별의결  /  매수 불가 = 1주도 편입 불가',
             '예)  효성중공업 : 지수 비중 0.47%, 1주 2,689,000원 → 1주 매수 시 한도 초과',
         ]),
+        ('지주회사', [
+            '순수지주(자체 사업 없이 지분만 보유)는 소속 팀 안에서 「지주」로 분리했다.',
+            '지주를 편입하면 자회사 지분이 함께 들어온다. 편입 전에 같은 팀이 보유한 자회사와 합산 노출을 확인한다.',
+            '예)  두산 ↔ 두산에너빌리티  /  LS ↔ LS ELECTRIC  /  SK스퀘어 ↔ SK하이닉스(룩스루 1.8배)',
+            '사업 실질이 주력인 지주(POSCO홀딩스·OCI홀딩스·세아베스틸지주)와 금융지주는 사업 섹터에 남겼다.',
+        ]),
         ('자료 기준', [
             '모든 수치에 출처와 기준일을 기재한다.',
             '1순위 자료는 DART 사업보고서이며, 증권사 리포트는 참고 자료로만 사용한다.',
@@ -256,25 +256,23 @@ def main():
     rows = load(CSV)
     total = sum(float(r[5]) for r in rows)
     smap = build()
-    S = {}
+    flat = []
     for code, name, close, _, _, mcap in rows:
         if name in MEGA:
             continue
-        sec = smap[name]
-        if sec == '금융':
-            sec = '금융 — 은행·지주' if name in BANK else '금융 — 보험·증권'
-        elif sec in ('통신', '미디어·엔터·레저'):
-            sec = '통신·미디어·엔터'
-        S.setdefault(sec, []).append(
-            dict(name=name, code=code, px=float(close),
-                 w=float(mcap) / total * 100, mcap=float(mcap)))
+        flat.append(dict(name=name, code=code, px=float(close), sec=smap[name],
+                         w=float(mcap) / total * 100, mcap=float(mcap)))
+    md = split_sectors(flat)
+    S = {}
+    for s_ in flat:
+        S.setdefault(s_['sec'], []).append(s_)
 
-    budgets = {t: sum(sum(x['w'] for x in S[k]) for k, v in MANDATE.items() if v == t)
+    budgets = {t: sum(sum(x['w'] for x in S[k]) for k, v in md.items() if v == t)
                   / 100 * NAV for t in (1, 2, 3)}
     wb = Workbook(); wb.remove(wb.active)
     guide_sheet(wb)
     for t in (1, 2, 3):
-        for sec in [k for k, v in MANDATE.items() if v == t]:
+        for sec in [k for k, v in md.items() if v == t]:
             build_sheet(wb, sec, t, S[sec], budgets[t])
     wb.save(OUT)
     print(f'저장: {OUT}  (시트 {len(wb.sheetnames)}개)')
