@@ -1,5 +1,8 @@
 # -*- coding: utf-8 -*-
-"""담당 산업 스크리닝 워크북 생성 — 기계적 항목은 미리 채우고 판단 칼럼만 비운다.
+"""담당 산업 스크리닝 워크북 생성.
+
+기입 완료 항목(기업명·코드·주가·시총·지수비중·매수판정)은 음영 처리하고,
+작성 항목만 흰색으로 남긴다.
 
 사용: python3 make_screening_book.py [CSV] [NAV] [출력경로]
 """
@@ -26,132 +29,226 @@ MANDATE = {
     '소비재·유통': 3, '통신·미디어·엔터': 3,
 }
 TEAM = {1: '테크·전동화', 2: '중후장대·인프라', 3: '내수·디펜시브'}
-TIP = {
-    '반도체·소부장': '41종목으로 가장 많습니다. 전공정(장비·소재)과 후공정(기판·테스트·패키징) '
-                  '둘로 나눠 2명이 맡는 것을 권장합니다.',
-    '지주(반도체 프록시)': 'SK스퀘어 1종목뿐입니다. SK하이닉스 룩스루가 1.8배라 1주만 사도 펀드 전체의 '
-                     'SKH 노출이 크게 움직입니다. 팀장이 직접 관리합니다.',
-    '헬스케어·바이오': '44종목 중 상당수가 매출이 없는 임상 단계 회사입니다. 매출·영업이익률·PER이 '
-                  '산출되지 않는 회사는 하위테마를 「파이프라인」으로 표기하고 별도로 다룹니다.',
-    '금융 — 은행·지주': '은행은 매출·영업이익률 대신 NIM·대손비용률·CET1·주주환원율을 씁니다. '
-                   '밸류에이션은 PER이 아니라 PBR-ROE로 봅니다.',
-    '금융 — 보험·증권': '보험은 IFRS17 기준이라 CSM·보험계약마진을 봐야 합니다. 어려우면 증권부터 '
-                   '보고 보험은 팀장과 상의하세요.',
+NOTE = {
+    '반도체·소부장': '41종목. 전공정(장비·소재) / 후공정(기판·테스트·패키징)으로 분할하여 2인이 분담할 것을 권장한다.',
+    '지주(반도체 프록시)': 'SK스퀘어 1종목. SK하이닉스 지분 룩스루 배수 1.8배. 팀장이 관리한다.',
+    '헬스케어·바이오': '44종목 중 다수가 매출 미발생 임상 단계 기업이다. 매출·영업이익률·PER 산출이 불가능한 기업은 하위 테마에 「파이프라인」으로 표기한다.',
+    '금융 — 은행·지주': '매출·영업이익률 대신 NIM·대손비용률·CET1·주주환원율을 사용한다. 밸류에이션은 PBR-ROE 기준.',
+    '금융 — 보험·증권': '보험은 IFRS17 기준 CSM을 확인한다.',
 }
 
-HEAD = Font(name='맑은 고딕', size=9, bold=True, color='FFFFFF')
-BODY = Font(name='맑은 고딕', size=9)
-BOLD = Font(name='맑은 고딕', size=9, bold=True)
-TITLE = Font(name='맑은 고딕', size=14, bold=True)
-GREY = Font(name='맑은 고딕', size=9, color='777777')
-FILL_H = PatternFill('solid', fgColor='2F3C7E')
-FILL_GIVEN = PatternFill('solid', fgColor='EDEDED')
-FILL_WRITE = PatternFill('solid', fgColor='FFFFFF')
-FILL_NOTE = PatternFill('solid', fgColor='FFF8E1')
-THIN = Side(style='thin', color='BFBFBF')
-BOX = Border(left=THIN, right=THIN, top=THIN, bottom=THIN)
-CEN = Alignment(horizontal='center', vertical='center')
+F = '맑은 고딕'
+TITLE   = Font(name=F, size=15, bold=True, color='1F2A44')
+SUB     = Font(name=F, size=9,  color='5A5A5A')
+HEAD    = Font(name=F, size=9,  bold=True, color='FFFFFF')
+LABEL   = Font(name=F, size=9,  bold=True, color='1F2A44')
+BODY    = Font(name=F, size=9)
+BOLD    = Font(name=F, size=9,  bold=True)
+BAD     = Font(name=F, size=9,  bold=True, color='9C0006')
+
+C_HEAD  = PatternFill('solid', fgColor='44546A')
+C_LABEL = PatternFill('solid', fgColor='D6DCE4')
+C_GIVEN = PatternFill('solid', fgColor='F2F2F2')
+C_BAND  = PatternFill('solid', fgColor='FAFAFA')
+C_BAD   = PatternFill('solid', fgColor='FFC7CE')
+C_RULE  = PatternFill('solid', fgColor='1F2A44')
+
+_t = Side(style='thin', color='BFBFBF')
+_m = Side(style='medium', color='44546A')
+BOX  = Border(left=_t, right=_t, top=_t, bottom=_t)
+TOPB = Border(left=_t, right=_t, top=_m, bottom=_t)
+BOTB = Border(left=_t, right=_t, top=_t, bottom=_m)
+CEN  = Alignment(horizontal='center', vertical='center')
+RGT  = Alignment(horizontal='right',  vertical='center')
 WRAP = Alignment(vertical='top', wrap_text=True)
 
-# (헤더, 폭, 채움여부)
+# (헤더, 폭, 기입완료여부, 정렬)
 COLS = [
-    ('하위 테마', 12, False), ('기업명', 16, True), ('코드', 8, True),
-    ('주가', 11, True), ('시총(조)', 9, True), ('KRX300 비중', 11, True),
-    ('1주=팀예산', 11, True), ('매수 판정', 11, True),
-    ('3년 매출CAGR', 12, False), ('영업이익률', 10, False), ('ROE', 9, False),
-    ('PER / PBR', 11, False), ('주요 제품', 22, False), ('시장 포지셔닝', 26, False),
-    ('투자포인트 / 탈락 사유', 34, False), ('출처 · 기준일', 18, False),
-    ('판정', 10, False),
+    ('하위 테마', 12, False, None), ('기업명', 16, True, None), ('코드', 8, True, CEN),
+    ('주가', 10, True, RGT), ('시가총액(조)', 11, True, RGT),
+    ('지수 비중', 10, True, RGT), ('1주 / 팀예산', 11, True, RGT),
+    ('매수 판정', 10, True, CEN),
+    ('매출 CAGR(3Y)', 12, False, CEN), ('영업이익률', 10, False, CEN), ('ROE', 9, False, CEN),
+    ('PER / PBR', 11, False, CEN), ('주요 제품', 22, False, None),
+    ('시장 포지셔닝', 26, False, None), ('투자포인트 / 탈락 사유', 34, False, None),
+    ('출처 · 기준일', 18, False, None), ('판정', 9, False, CEN),
 ]
+N = len(COLS)
 
 
-def put(ws, r, c, v, font=BODY, fill=None, align=None, border=True, fmt=None):
+def put(ws, r, c, v=None, font=BODY, fill=None, align=None, border=BOX, fmt=None):
     cell = ws.cell(row=r, column=c, value=v)
     cell.font = font
     if fill: cell.fill = fill
     if align: cell.alignment = align
-    if border: cell.border = BOX
+    if border: cell.border = border
     if fmt: cell.number_format = fmt
     return cell
+
+
+def field(ws, r, c, label, value, lw=1, vw=2):
+    """라벨 / 값 한 쌍."""
+    put(ws, r, c, label, LABEL, C_LABEL, CEN)
+    put(ws, r, c + lw, value, BODY, None, CEN)
+    if vw > 1:
+        ws.merge_cells(start_row=r, start_column=c + lw, end_row=r, end_column=c + lw + vw - 1)
+        for k in range(1, vw):
+            ws.cell(row=r, column=c + lw + k).border = BOX
+    return c + lw + vw
+
+
+def rule(ws, r):
+    for i in range(1, N + 1):
+        put(ws, r, i, None, BODY, C_RULE, border=None)
+    ws.row_dimensions[r].height = 3
 
 
 def build_sheet(wb, sec, team, stocks, budget):
     ws = wb.create_sheet(f'{team}_{sec}'[:31].replace('/', '·'))
     ws.sheet_view.showGridLines = False
-    ws.freeze_panes = 'B9'
+    for i, (_, wdt, _, _) in enumerate(COLS, 1):
+        ws.column_dimensions[get_column_letter(i)].width = wdt
 
-    ws.cell(row=1, column=1, value=f'{sec}').font = TITLE
-    ws.cell(row=2, column=1,
-            value=f'팀 {team} · {TEAM[team]}   |   담당자: ____________   |   '
-                  f'제출: 세션 전날 자정   |   기준일 {ASOF} 종가').font = GREY
     w = sum(s['w'] for s in stocks)
-    ws.cell(row=3, column=1,
-            value=f'이 산업의 벤치마크 비중 {w:.2f}%  =  배정액 {w/100*NAV:,.0f}원   |   '
-                  f'{len(stocks)}종목   |   팀 예산 {budget:,.0f}원').font = BOLD
+    ws.cell(row=1, column=1, value=sec).font = TITLE
+    ws.row_dimensions[1].height = 22
+    c = ws.cell(row=2, column=1, value=f'ICOK Fund 26-2  ·  담당 산업 스크리닝')
+    c.font = SUB
+    rule(ws, 3)
 
-    note = TIP.get(sec)
-    r = 5
-    if note:
-        c = put(ws, r, 1, '※ ' + note, GREY, FILL_NOTE, WRAP, border=False)
-        ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=len(COLS))
-        ws.row_dimensions[r].height = 30
-        r += 2
-    else:
-        r = 6
+    nx = field(ws, 4, 1, '팀', f'팀 {team} · {TEAM[team]}', 1, 2)
+    nx = field(ws, 4, nx, '담당자', None, 1, 2)
+    field(ws, 4, nx, '제출일', None, 1, 2)
+    nx = field(ws, 5, 1, '지수 비중', f'{w:.2f}%', 1, 2)
+    nx = field(ws, 5, nx, '배정액', f'{w/100*NAV:,.0f}원', 1, 2)
+    nx = field(ws, 5, nx, '종목 수', f'{len(stocks)}', 1, 2)
+    field(ws, 5, nx, '기준일', ASOF, 1, 2)
+    for r in (4, 5):
+        ws.row_dimensions[r].height = 17
 
-    put(ws, r, 1, '회색 칸은 채워져 있습니다. 흰 칸만 작성하세요.  '
-                  '모든 숫자에 출처와 기준일을 답니다 — DART 사업보고서가 1순위입니다.  '
-                  '증권사 리포트를 논지의 근거로 쓰지 않습니다.',
-        GREY, None, WRAP, border=False)
-    ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=len(COLS))
+    r = 7
+    if sec in NOTE:
+        put(ws, r, 1, NOTE[sec], SUB, None, WRAP, border=None)
+        ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=N)
+        ws.row_dimensions[r].height = 15
+        r += 1
+    put(ws, r, 1, '음영 셀은 기입 완료. 흰색 셀만 작성한다.', SUB, None, None, border=None)
     hr = r + 2
 
-    for i, (h, wdt, _) in enumerate(COLS, 1):
-        put(ws, hr, i, h, HEAD, FILL_H, CEN)
-        ws.column_dimensions[get_column_letter(i)].width = wdt
-    ws.row_dimensions[hr].height = 24
+    for i, (h, _, _, _) in enumerate(COLS, 1):
+        put(ws, hr, i, h, HEAD, C_HEAD, CEN, TOPB)
+    ws.row_dimensions[hr].height = 26
+    ws.freeze_panes = ws.cell(row=hr + 1, column=2)
 
     for j, s in enumerate(sorted(stocks, key=lambda x: -x['w'])):
         row = hr + 1 + j
+        last = j == len(stocks) - 1
         one = s['px'] / NAV * 100
         entry = abs((int(s['w'] / one) + 1) * one - s['w'])
         verdict = ('매수 불가' if entry > HARD_CAP else
                    'IC 2/3' if entry > BUDGET_CAP else '가능')
-        vals = [None, s['name'], s['code'], s['px'], round(s['mcap'] / 1e6, 1),
+        band = C_BAND if j % 2 else None
+        vals = [None, s['name'], s['code'], s['px'], s['mcap'] / 1e6,
                 s['w'] / 100, s['px'] / budget, verdict]
+        fmts = {4: '#,##0', 5: '0.0', 6: '0.00%', 7: '0.0%'}
         for i, v in enumerate(vals, 1):
             given = COLS[i - 1][2]
-            cell = put(ws, row, i, v, BODY, FILL_GIVEN if given else FILL_WRITE,
-                       CEN if i in (3, 8) else None)
-            if i == 4: cell.number_format = '#,##0'
-            if i == 5: cell.number_format = '0.0'
-            if i in (6, 7): cell.number_format = '0.00%'
+            cell = put(ws, row, i, v, BODY, C_GIVEN if given else band,
+                       COLS[i - 1][3], BOTB if last else BOX, fmts.get(i))
             if i == 8 and verdict != '가능':
-                cell.font = Font(name='맑은 고딕', size=9, bold=True, color='990011')
-        for i in range(9, len(COLS) + 1):
-            put(ws, row, i, None, BODY, FILL_WRITE, WRAP)
+                cell.font, cell.fill = BAD, C_BAD
+        for i in range(9, N + 1):
+            put(ws, row, i, None, BODY, band, WRAP, BOTB if last else BOX)
 
-    last = hr + len(stocks)
+    end = hr + len(stocks)
     dv = DataValidation(type='list', formula1='"Top1,Top2,Top3,보류,탈락"', allow_blank=True)
     ws.add_data_validation(dv)
-    dv.add(f'Q{hr+1}:Q{last}')
+    dv.add(f'{get_column_letter(N)}{hr+1}:{get_column_letter(N)}{end}')
 
-    # 하단 결론 블록
-    b = last + 2
-    put(ws, b, 1, '결론 — 위 표를 채운 다음 작성합니다', BOLD, None, None, border=False)
-    rows = [
-        ('Top 1', '선정 근거 2줄 — 컨센서스와 무엇이 다른가'),
-        ('Top 2', ''), ('Top 3', ''),
-        ('탈락 1', '뺀 이유 한 줄 — "지표가 나빠서"는 사유가 아니다. 어떤 지표가 왜 나쁜지 쓴다'),
-        ('탈락 2', ''), ('탈락 3', ''), ('탈락 4', ''), ('탈락 5', ''),
-    ]
-    for k, (label, hint) in enumerate(rows):
+    b = end + 2
+    put(ws, b, 1, '선정 결과', HEAD, C_HEAD, None, TOPB)
+    for i in range(2, N + 1):
+        put(ws, b, i, None, HEAD, C_HEAD, None, TOPB)
+    ws.row_dimensions[b].height = 22
+    block = [('Top 1', '선정 근거 (컨센서스와의 차이 중심, 2줄)'), ('Top 2', ''), ('Top 3', ''),
+             ('탈락 1', '탈락 사유 (해당 지표와 수치를 명시)'), ('탈락 2', ''),
+             ('탈락 3', ''), ('탈락 4', ''), ('탈락 5', '')]
+    for k, (label, hint) in enumerate(block):
         rr = b + 1 + k
-        put(ws, rr, 1, label, BOLD, FILL_GIVEN, CEN)
-        put(ws, rr, 2, None, BODY, FILL_WRITE, CEN)
-        put(ws, rr, 3, hint or None, GREY if hint else BODY, FILL_WRITE, WRAP)
-        ws.merge_cells(start_row=rr, start_column=3, end_row=rr, end_column=len(COLS))
-        ws.row_dimensions[rr].height = 20
+        last = k == len(block) - 1
+        bd = BOTB if last else BOX
+        put(ws, rr, 1, label, LABEL, C_LABEL, CEN, bd)
+        put(ws, rr, 2, None, BODY, None, CEN, bd)
+        put(ws, rr, 3, hint or None, SUB if hint else BODY, None, WRAP, bd)
+        ws.merge_cells(start_row=rr, start_column=3, end_row=rr, end_column=N)
+        for i in range(4, N + 1):
+            ws.cell(row=rr, column=i).border = bd
+        ws.row_dimensions[rr].height = 19
+    return ws
+
+
+def guide_sheet(wb):
+    ws = wb.create_sheet('작성요령')
+    ws.sheet_view.showGridLines = False
+    ws.column_dimensions['A'].width = 3
+    ws.column_dimensions['B'].width = 20
+    ws.column_dimensions['C'].width = 88
+    ws.cell(row=1, column=2, value='담당 산업 스크리닝 작성요령').font = TITLE
+    ws.cell(row=2, column=2, value=f'ICOK Fund 26-2  ·  기준일 {ASOF} 종가').font = SUB
+    for i in (2, 3):
+        put(ws, 3, i, None, BODY, C_RULE, border=None)
+    ws.row_dimensions[3].height = 3
+
+    SEC = [
+        ('과제 개요', [
+            '담당 산업의 전 종목을 검토하여 발제 후보 3종목을 선정한다.',
+            '선정한 3종목 중 1종목을 10월 13일 세션에서 발제한다.',
+            '선정 근거와 함께 탈락 근거를 반드시 기재한다.',
+        ]),
+        ('작성 순서', [
+            '1.  하위 테마를 2~4개로 분류한다.   예) 에너지 → 태양광 / 풍력 / 원자력 / ESS',
+            '2.  매출 CAGR(3년) · 영업이익률 · ROE · PER(또는 PBR)을 기입한다.',
+            '3.  주요 제품과 시장 포지셔닝을 각 한 줄로 기입한다.',
+            '4.  판정 칸에 Top1~3 / 보류 / 탈락을 선택한다.',
+            '5.  시트 하단 「선정 결과」에 Top 3 근거와 탈락 5종목 사유를 기입한다.',
+        ]),
+        ('기입 완료 항목', [
+            '기업명 · 종목코드 · 주가 · 시가총액 · 지수 비중 · 1주가 팀 예산에서 차지하는 비중 · 매수 판정',
+            '음영 처리된 셀이며 수정하지 않는다.',
+        ]),
+        ('지수 비중', [
+            'KRX 300 비중은 해당 종목의 중립 비중이다.',
+            '예)  비중 0.5% 종목을 1.5% 편입 → 액티브 +1.0%p  /  미편입 → 액티브 −0.5%p',
+            '지수 미편입 종목은 중립 비중이 0이므로 편입 시 전량 액티브 포지션으로 기록된다.',
+        ]),
+        ('매수 판정', [
+            '1주 가격이 높아 최소 매수 단위만으로 한도를 초과하는 종목이 있다. 종목 선정 전에 확인한다.',
+            '가능 = 팀 재량  /  IC 2/3 = 펀드 IC 특별의결  /  매수 불가 = 1주도 편입 불가',
+            '예)  효성중공업 : 지수 비중 0.47%, 1주 2,689,000원 → 1주 매수 시 한도 초과',
+        ]),
+        ('자료 기준', [
+            '모든 수치에 출처와 기준일을 기재한다.',
+            '1순위 자료는 DART 사업보고서이며, 증권사 리포트는 참고 자료로만 사용한다.',
+        ]),
+        ('작성 시 유의사항', [
+            '증권사 리포트를 논지의 근거로 사용하지 않는다. 목표주가를 인용하지 않는다.',
+            '검증 불가능한 표현(유망하다, 성장성이 크다, 저평가되어 있다 등)을 사용하지 않는다.',
+            '수치를 개략값(약 ○조 등)으로 기재하지 않는다.',
+        ]),
+    ]
+    r = 5
+    for head, lines in SEC:
+        put(ws, r, 2, head, LABEL, C_LABEL, CEN)
+        put(ws, r, 3, lines[0], BODY, None, WRAP)
+        ws.row_dimensions[r].height = 17
+        for ln in lines[1:]:
+            r += 1
+            put(ws, r, 2, None, BODY, C_LABEL)
+            put(ws, r, 3, ln, BODY, None, WRAP)
+            ws.row_dimensions[r].height = 17
+        ws.merge_cells(start_row=r - len(lines) + 1, start_column=2,
+                       end_row=r, end_column=2)
+        r += 2
     return ws
 
 
@@ -174,71 +271,13 @@ def main():
 
     budgets = {t: sum(sum(x['w'] for x in S[k]) for k, v in MANDATE.items() if v == t)
                   / 100 * NAV for t in (1, 2, 3)}
-
-    wb = Workbook()
-    wb.remove(wb.active)
-
-    gd = wb.create_sheet('0_작성요령')
-    gd.sheet_view.showGridLines = False
-    gd.column_dimensions['A'].width = 4
-    gd.column_dimensions['B'].width = 104
-    gd.cell(row=1, column=2, value='담당 산업 스크리닝 — 작성 요령').font = TITLE
-    lines = [
-        ('', ''),
-        ('무엇을 하는 과제인가', 'h'),
-        ('담당 산업의 전 종목을 훑고, 발제할 만한 3종목까지 좁힌다. '
-         '여기서 고른 3종목 중 하나를 10월 13일에 발제한다.', ''),
-        ('스크리닝은 고르는 작업이 아니라 떨어뜨리는 작업이다. '
-         '전 종목에 좋은 이야기만 적혀 있으면 그것은 종목 소개서지 스크리닝이 아니다.', ''),
-        ('', ''),
-        ('작성 순서', 'h'),
-        ('1.  하위 테마를 먼저 나눈다 — 산업을 통째로 보지 말고 2~4개 갈래로 쪼갠다.', ''),
-        ('     예: 에너지 → 태양광 / 풍력 / 원자력 / ESS    조선 → 상선 / 특수선 / 기자재', ''),
-        ('2.  숫자 칸을 채운다 — 3년 매출 CAGR · 영업이익률 · ROE · PER(또는 PBR).', ''),
-        ('     모든 숫자에 출처와 기준일을 단다. DART 사업보고서가 1순위, 증권사 리포트는 참고만.', ''),
-        ('3.  주요 제품과 시장 포지셔닝을 한 줄씩 쓴다 — 무엇을 팔아 돈을 버는가.', ''),
-        ('4.  판정 칸에 Top1~3 / 보류 / 탈락을 고른다.', ''),
-        ('5.  맨 아래 결론 블록에 Top 3 근거와 탈락 5종목의 사유를 쓴다.', ''),
-        ('', ''),
-        ('이미 채워져 있는 것 (회색 칸)', 'h'),
-        ('기업명 · 코드 · 주가 · 시총 · KRX300 비중 · 1주가 팀 예산에서 차지하는 비중 · 매수 판정', ''),
-        ('찾는 데 시간 쓰지 말고 판단하는 데 쓰라고 미리 넣었다. 기준일은 ' + ASOF + ' 종가다.', ''),
-        ('', ''),
-        ('KRX300 비중이 왜 중요한가', 'h'),
-        ('그 종목의 KRX300 비중이 곧 우리의 중립 비중이다. 아무 판단도 하지 않으면 그만큼 들고 있는 것이다.', ''),
-        ('비중 0.5%인 종목을 1.5% 담으면 +1.0%p 액티브 베팅이고, 안 담으면 −0.5%p 숏이다.', ''),
-        ('지수에 없는 종목은 중립이 0이므로 1주만 사도 100% 액티브 베팅이 된다. 금지는 아니지만 알고 사야 한다.', ''),
-        ('', ''),
-        ('매수 판정 — 분석하기 전에 먼저 본다', 'h'),
-        ('1주 가격이 너무 높아 중립을 넘겨버리는 종목이 있다. 4주 분석하고 못 사면 전부 버리게 된다.', ''),
-        ('「가능」 = 팀 재량   「IC 2/3」 = 펀드 IC 특별의결 필요   「매수 불가」 = 1주도 살 수 없다', ''),
-        ('실제 사례 — 효성중공업은 KRX300 비중이 0.47%인데 1주가 268만원이라 1주만 사도 한도를 넘는다.', ''),
-        ('', ''),
-        ('하지 말 것', 'h'),
-        ('증권사 리포트를 논지의 근거로 쓰지 않는다. 목표주가를 인용하지 않는다.', ''),
-        ('「유망하다 · 성장성이 크다 · 저평가되어 있다」처럼 검증할 수 없는 말을 쓰지 않는다.', ''),
-        ('숫자를 「약 ~조」로 뭉개지 않는다. 출처와 기준일이 없으면 틀려도 아무도 못 잡는다.', ''),
-    ]
-    r = 2
-    for text, kind in lines:
-        if not text:
-            r += 1; continue
-        c = gd.cell(row=r, column=2, value=text)
-        c.font = BOLD if kind == 'h' else BODY
-        c.alignment = WRAP
-        if kind == 'h':
-            c.fill = FILL_GIVEN
-        r += 1
-
+    wb = Workbook(); wb.remove(wb.active)
+    guide_sheet(wb)
     for t in (1, 2, 3):
         for sec in [k for k, v in MANDATE.items() if v == t]:
             build_sheet(wb, sec, t, S[sec], budgets[t])
-
     wb.save(OUT)
     print(f'저장: {OUT}  (시트 {len(wb.sheetnames)}개)')
-    for t in (1, 2, 3):
-        ks = [k for k, v in MANDATE.items() if v == t]
-        print(f'  팀{t} {TEAM[t]}: {len(ks)}개 산업, 예산 {budgets[t]:,.0f}원')
 
 
 if __name__ == '__main__':
