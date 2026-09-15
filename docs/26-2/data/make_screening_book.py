@@ -11,7 +11,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.worksheet.datavalidation import DataValidation
 from openpyxl.utils import get_column_letter
-from sector_map import build, MEGA, MANDATE, TEAM_NAME, split_sectors
+from sector_map import build, MEGA, MANDATE, TEAM_NAME, split_sectors, HOLDCO
 from weights import load
 
 CSV = sys.argv[1] if len(sys.argv) > 1 else 'krx300_constituents_20260915.csv'
@@ -22,9 +22,9 @@ HARD_CAP, BUDGET_CAP = 8.0, 6.0
 
 NOTE = {
     '반도체·소부장': '38종목. 전공정(장비·소재) / 후공정(기판·테스트·패키징)으로 분할하여 2인이 분담할 것을 권장한다.',
-    '지주 — 테크·전동화': '순수지주만 모았다. 주가 동인은 NAV 할인율·지배구조·주주환원이며 사업회사와 분석 틀이 다르다. SK스퀘어는 SK하이닉스 지분 룩스루 배수가 1.8배이므로 편입 시 펀드 전체의 SK하이닉스 노출을 함께 계산한다.',
-    '지주 — 산업재·인프라': '순수지주만 모았다. 자회사와 중복 노출을 확인한다. 두산 ↔ 두산에너빌리티, LS ↔ LS ELECTRIC, HD현대 ↔ HD현대중공업·HD현대일렉트릭, 한화 ↔ 한화에어로스페이스.',
-    '지주 — 내수·소비': '순수지주만 모았다. 자회사와 중복 노출을 확인한다. LG ↔ LG전자·LG화학·LG에너지솔루션, CJ ↔ CJ제일제당·CJ대한통운, 한미사이언스 ↔ 한미약품.',
+    '지주 — 테크·전동화': '순수지주를 재료 기준으로 묶었다. 하위 테마·주요 제품(자체 사업)·보유 자회사는 기입 완료 항목이다. 지주의 재료는 자체 사업과 보유 자회사 두 갈래이며, 자체 사업이 있는 지주는 그쪽이 주가를 먼저 움직인다. SK스퀘어는 SK하이닉스 룩스루 배수가 1.8배이므로 편입 시 펀드 전체의 SK하이닉스 노출을 함께 계산한다.',
+    '지주 — 산업재·인프라': '순수지주를 재료 기준으로 묶었다. 두산은 자체 사업(전자BG 하이엔드 CCL)과 자회사(두산에너빌리티 가스터빈·SMR)가 모두 AI 데이터센터로 모인다 — 팀 1의 이수페타시스·대덕전자와 재료가 겹치므로 합산 노출을 확인한다. 하림지주는 육계가 아니라 팬오션(벌크 해운)이 NAV의 대부분이라 이 팀으로 옮겼다.',
+    '지주 — 내수·소비': '순수지주를 재료 기준으로 묶었다. 미스토홀딩스는 의류가 아니라 아쿠쉬네트(타이틀리스트 골프용품)가 주력이다. 자회사와 중복 노출을 확인한다 — CJ ↔ CJ제일제당·CJ대한통운, 한미사이언스 ↔ 한미약품, 아모레퍼시픽홀딩스 ↔ 아모레퍼시픽.',
     '소재·에너지': '27종목. 철강·화학·비철금속과 정유·상사·해운을 함께 본다. 공통 동인은 원자재 가격과 스프레드다.',
     '헬스케어·바이오': '42종목 중 다수가 매출 미발생 임상 단계 기업이다. 매출·영업이익률·PER 산출이 불가능한 기업은 하위 테마에 「파이프라인」으로 표기한다.',
     '금융 — 은행·지주': '매출·영업이익률 대신 NIM·대손비용률·CET1·주주환원율을 사용한다. 밸류에이션은 PBR-ROE 기준.',
@@ -142,17 +142,20 @@ def build_sheet(wb, sec, team, stocks, budget):
         verdict = ('매수 불가' if entry > HARD_CAP else
                    'IC 2/3' if entry > BUDGET_CAP else '가능')
         band = C_BAND if j % 2 else None
-        vals = [None, s['name'], s['code'], s['px'], s['mcap'] / 1e6,
+        h = HOLDCO.get(s['name'])
+        vals = [h[2] if h else None, s['name'], s['code'], s['px'], s['mcap'] / 1e6,
                 s['w'] / 100, s['px'] / budget, verdict]
+        pre = {13: h[0], 14: h[1]} if h else {}
         fmts = {4: '#,##0', 5: '0.0', 6: '0.00%', 7: '0.0%'}
         for i, v in enumerate(vals, 1):
-            given = COLS[i - 1][2]
+            given = COLS[i - 1][2] or (i == 1 and h)
             cell = put(ws, row, i, v, BODY, C_GIVEN if given else band,
                        COLS[i - 1][3], BOTB if last else BOX, fmts.get(i))
             if i == 8 and verdict != '가능':
                 cell.font, cell.fill = BAD, C_BAD
         for i in range(9, N + 1):
-            put(ws, row, i, None, BODY, band, WRAP, BOTB if last else BOX)
+            put(ws, row, i, pre.get(i), BODY, C_GIVEN if i in pre else band,
+                WRAP, BOTB if last else BOX)
 
     end = hr + len(stocks)
     dv = DataValidation(type='list', formula1='"Top1,Top2,Top3,보류,탈락"', allow_blank=True)
@@ -221,9 +224,13 @@ def guide_sheet(wb):
             '예)  효성중공업 : 지수 비중 0.47%, 1주 2,689,000원 → 1주 매수 시 한도 초과',
         ]),
         ('지주회사', [
-            '순수지주(자체 사업 없이 지분만 보유)는 소속 팀 안에서 「지주」로 분리했다.',
-            '지주를 편입하면 자회사 지분이 함께 들어온다. 편입 전에 같은 팀이 보유한 자회사와 합산 노출을 확인한다.',
-            '예)  두산 ↔ 두산에너빌리티  /  LS ↔ LS ELECTRIC  /  SK스퀘어 ↔ SK하이닉스(룩스루 1.8배)',
+            '순수지주(자체 사업이 없거나 지분 보유가 주력인 회사)는 「지주」로 분리했다.',
+            '지주의 재료는 두 갈래다 — 지주회사가 직접 영위하는 사업, 그리고 보유 자회사.',
+            '예)  (주)두산은 전자BG의 하이엔드 CCL이 AI 서버 기판 소재이고, 자회사 두산에너빌리티는 가스터빈·SMR이다.',
+            '     두 재료가 모두 AI 데이터센터로 모이므로 테마를 「AI 데이터센터」로 둔다.',
+            '하위 테마 · 주요 제품(자체 사업) · 시장 포지셔닝(보유 자회사)은 기입 완료 항목이다. 나머지를 작성한다.',
+            '지주를 편입하면 자회사 지분이 함께 들어온다. 편입 전에 자회사와 합산 노출을 확인한다.',
+            '     SK스퀘어 ↔ SK하이닉스는 룩스루 배수가 1.8배다. 1주 매수로 실질 노출이 그 배수만큼 움직인다.',
             '사업 실질이 주력인 지주(POSCO홀딩스·OCI홀딩스·세아베스틸지주)와 금융지주는 사업 섹터에 남겼다.',
         ]),
         ('자료 기준', [
