@@ -107,11 +107,12 @@ def note(doc, text):
     para(doc, text, 9, color=GRAY, after=0)
 
 
-def main():
-    doc = Document()
-
+def build(doc, attach=False):
+    """양식 전체를 doc 뒤에 붙인다. attach=True면 공문의 붙임으로 새 구역에서 시작한다."""
     # ── 표지 ────────────────────────────────────────────────────
-    page(doc, first=True)
+    page(doc, first=not attach)
+    if attach:
+        para(doc, '붙임', 10, True, GRAY, after=2)
     para(doc, '세부섹터 스터디 종합본', 20, True, NAVY, after=1)
     para(doc, 'ICOK Fund 26-2  ·  2026년 9월 29일 세션  ·  팀당 발표 12분 + 질의 5분  ·  제출 9월 28일 자정',
          10, color=GRAY, after=8)
@@ -347,6 +348,11 @@ def main():
         cell(t.rows[i].cells[3], str(i + 10), 9, align=WD_ALIGN_PARAGRAPH.CENTER)
     widths(t, (1, 3.5, 8.85, 1, 3.5, 8.85))
 
+
+
+def main():
+    doc = Document()
+    build(doc)
     doc.save(OUT)
     print(f'저장: {OUT}')
 
