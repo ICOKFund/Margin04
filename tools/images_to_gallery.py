@@ -115,8 +115,7 @@ $source_button
 $figures
 </main>
 <footer>
-$source_line
-<p>이미지의 저작권은 원작자에게 있습니다.</p>
+$credit
 <p>만든 시각: $created (KST)</p>
 </footer>
 </div>
@@ -140,13 +139,17 @@ def build_page(files: list[Path], title: str, source: str, author: str, max_widt
     link = esc(source)
     source_button = (f'<a class="src" href="{link}" target="_blank" rel="noopener noreferrer">원문 보기 ↗</a>'
                      if source else "")
-    source_line = (f'<p>출처: <a href="{link}" target="_blank" rel="noopener noreferrer">{esc(author or source)}</a></p>'
-                   if source else (f"<p>출처: {esc(author)}</p>" if author else ""))
+    # Credit lines only when a source/author is given; leave both out for your own images.
+    credit = ""
+    if source or author:
+        who = (f'<a href="{link}" target="_blank" rel="noopener noreferrer">{esc(author or source)}</a>'
+               if source else esc(author))
+        credit = f"<p>출처: {who}</p>\n<p>이미지의 저작권은 원작자에게 있습니다.</p>"
     label = author or "이미지 모음"  # small line above the title; skipped when it would repeat the title
     page = PAGE.substitute(
         title=esc(title), count=len(files), meta=f"이미지 {len(files)}장",
         kicker=f'<div class="kicker">{esc(label)}</div>' if label != title else "",
-        source_button=source_button, source_line=source_line, figures="\n".join(figures),
+        source_button=source_button, credit=credit, figures="\n".join(figures),
         created=dt.datetime.now(KST).strftime("%Y-%m-%d %H:%M"),
     )
     return page, total_bytes
