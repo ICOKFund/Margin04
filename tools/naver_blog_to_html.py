@@ -933,12 +933,16 @@ def render_document(meta: PostMeta, body_html: str) -> str:
     )
 
 
-def default_filename(meta: PostMeta) -> str:
+def dated_filename(title: str, when: dt.datetime | None = None, fallback: str = "naver_blog") -> str:
     """Follow the 'YYMMDD_제목.html' naming used for files shared in KakaoTalk."""
-    day = (meta.date or dt.datetime.now(KST)).strftime("%y%m%d")
-    title = re.sub(r'[\\/:*?"<>|\x00-\x1f]', "", meta.title).strip()
-    title = re.sub(r"\s+", "_", title)[:40].rstrip("_.") or "naver_blog"
-    return f"{day}_{title}.html"
+    day = (when or dt.datetime.now(KST)).strftime("%y%m%d")
+    name = re.sub(r'[\\/:*?"<>|\x00-\x1f]', "", title).strip()
+    name = re.sub(r"\s+", "_", name)[:40].rstrip("_.") or fallback
+    return f"{day}_{name}.html"
+
+
+def default_filename(meta: PostMeta) -> str:
+    return dated_filename(meta.title, meta.date)
 
 
 def main(argv=None) -> int:
