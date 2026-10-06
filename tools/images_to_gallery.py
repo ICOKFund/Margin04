@@ -106,7 +106,7 @@ footer a{color:inherit}
 <body>
 <div class="wrap">
 <header class="head">
-<div class="kicker">이미지 모음</div>
+$kicker
 <h1>$title</h1>
 <div class="meta">$meta</div>
 $source_button
@@ -142,8 +142,10 @@ def build_page(files: list[Path], title: str, source: str, author: str, max_widt
                      if source else "")
     source_line = (f'<p>출처: <a href="{link}" target="_blank" rel="noopener noreferrer">{esc(author or source)}</a></p>'
                    if source else (f"<p>출처: {esc(author)}</p>" if author else ""))
+    label = author or "이미지 모음"  # small line above the title; skipped when it would repeat the title
     page = PAGE.substitute(
-        title=esc(title), count=len(files), meta=" · ".join(esc(x) for x in (author, f"이미지 {len(files)}장") if x),
+        title=esc(title), count=len(files), meta=f"이미지 {len(files)}장",
+        kicker=f'<div class="kicker">{esc(label)}</div>' if label != title else "",
         source_button=source_button, source_line=source_line, figures="\n".join(figures),
         created=dt.datetime.now(KST).strftime("%Y-%m-%d %H:%M"),
     )
